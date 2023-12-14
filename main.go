@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Senjuti De
+Copyright 2023 Senjuti
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,14 +23,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
-	"k8s.io/client-go/util/retry"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
+	//"k8s.io/client-go/util/retry"
+	//"k8s.io/apimachinery/pkg/runtime"
+	//"github.com/tektoncd/pipeline/pkg/client/clientset/versioned"
+	//"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	//"k8s.io/client-go/kubernetes/scheme"
 )
 
 func main() {
@@ -47,10 +53,18 @@ func main() {
 		panic(err)
 	}
 	
+	// Create dynamic client
 	dynamicClient, err := dynamic.NewForConfig(config)
 	if err != nil {
 		panic(err)
 	}
+
+
+
+	// Register the Tekton scheme
+	//v1beta1.AddToScheme(scheme.Scheme)
+	//metav1.AddToGroupVersion(scheme.Scheme, schema.GroupVersion{Group: "tekton.dev", Version: "v1beta1"})
+
 
 	// Create Task
 	taskResource := schema.GroupVersionResource{Group: "tekton.dev", Version: "v1beta1", Resource: "tasks"}
@@ -65,11 +79,10 @@ func main() {
 			"spec": map[string]interface{}{
 				"steps": []map[string]interface{}{
 					{
-						"name": "step1",
-						"containers": map[string]interface{}{
-							"image": "ubuntu",
-							"command": []string{"echo", "Hello, Tekton!"},
-						},
+						"name":  "step1",
+        		"image": "ubuntu",
+        		"command": []string{"echo", "Hello, Tekton!"},
+
 					},
 				},
 			},
@@ -77,49 +90,18 @@ func main() {
 	}
 
 	fmt.Println("Creating Task...")
-	resultTask, err := dynamicClient.Resource(taskResource).Create(context.TODO(), task, metav1.CreateOptions{})
+	resultTask, err := dynamicClient.Resource(taskResource).Namespace("default").Create(context.TODO(), task, metav1.CreateOptions{})
 	if err != nil {
 		panic(err)
 	}
 	fmt.Printf("Created Task %q.\n", resultTask.GetName())
 	printTaskDetails(resultTask)
 
-	// Update Task
-	prompt()
-	fmt.Println("Updating Task...")
-	retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		resultTask, getErr := dynamicClient.Resource(taskResource).Get(context.TODO(), "sample-task", metav1.GetOptions{})
-		if getErr != nil {
-			panic(fmt.Errorf("Failed to get the latest version of Task: %v", getErr))
-		}
-
-		// Print task details before update
-		fmt.Printf("Before Update - ")
-		printTaskDetails(resultTask)
-
-		// Modify the Task as needed
-		// For example, change the image to busybox and update the message
-		unstructured.SetNestedField(resultTask.Object, "busybox", "spec", "steps", "0", "container", "image")
-		unstructured.SetNestedField(resultTask.Object, []string{"echo", "Updated Hello Tekton"}, "spec", "steps", "0", "container", "command")
-
-		// Print task details after update
-		fmt.Printf("After Update - ")
-		printTaskDetails(resultTask)
-
-		_, updateErr := dynamicClient.Resource(taskResource).Update(context.TODO(), resultTask, metav1.UpdateOptions{})
-		return updateErr
-	})
-	if retryErr != nil {
-		panic(fmt.Errorf("Update failed: %v", retryErr))
-	}
-	fmt.Println("Updated Task...")
-	fmt.Printf("Updated Task %q. ", resultTask.GetName())
-	printTaskDetails(resultTask)
 
 	// List Tasks
 	prompt()
 	fmt.Printf("Listing Tasks in namespace %q:\n", "default")
-	taskList, err := dynamicClient.Resource(taskResource).List(context.TODO(), metav1.ListOptions{})
+	taskList, err := dynamicClient.Resource(taskResource).Namespace("default").List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		panic(err)
 	}
@@ -131,7 +113,7 @@ func main() {
 	prompt()
 	fmt.Println("Deleting Task...")
 	deletePolicy := metav1.DeletePropagationForeground
-	if err := dynamicClient.Resource(taskResource).Delete(context.TODO(), "sample-task", metav1.DeleteOptions{
+	if err := dynamicClient.Resource(taskResource).Namespace("default").Delete(context.TODO(), "sample-task", metav1.DeleteOptions{
 		PropagationPolicy: &deletePolicy,
 	}); err != nil {
 		panic(err)
@@ -152,7 +134,8 @@ func prompt() {
 }
 
 func printTaskDetails(task *unstructured.Unstructured) {
-	image, _, _ := unstructured.NestedString(task.Object, "spec", "steps", "0", "container", "image")
-	command, _, _ := unstructured.NestedStringSlice(task.Object, "spec", "steps", "0", "container", "command")
+	image, _, _ := unstructured.NestedString(task.Object, "spec", "steps", "image")
+	command, _, _ := unstructured.NestedStringSlice(task.Object, "spec", "steps", "command")
 	fmt.Printf("Image: %s, Command: %v\n", image, command)
 }
+
