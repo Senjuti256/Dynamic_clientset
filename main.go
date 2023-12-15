@@ -32,11 +32,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 
-	//"k8s.io/client-go/util/retry"
-	//"k8s.io/apimachinery/pkg/runtime"
-	//"github.com/tektoncd/pipeline/pkg/client/clientset/versioned"
-	//"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
-	//"k8s.io/client-go/kubernetes/scheme"
 )
 
 func main() {
@@ -58,7 +53,6 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-
 
 
 	// Register the Tekton scheme
@@ -133,9 +127,45 @@ func prompt() {
 	fmt.Println()
 }
 
-func printTaskDetails(task *unstructured.Unstructured) {
-	image, _, _ := unstructured.NestedString(task.Object, "spec", "steps", "image")
-	command, _, _ := unstructured.NestedStringSlice(task.Object, "spec", "steps", "command")
-	fmt.Printf("Image: %s, Command: %v\n", image, command)
-}
+//func printTaskDetails(task *unstructured.Unstructured) {
+	//image, _, _ := unstructured.NestedString(task.Object, "spec", "steps", "image")
+	//command, _, _ := unstructured.NestedStringSlice(task.Object, "spec", "steps", "command")
+	//fmt.Printf("Image: %s, Command: %v\n", image, command)
+//}
 
+func printTaskDetails(task *unstructured.Unstructured) {
+	steps, found, err := unstructured.NestedSlice(task.Object, "spec", "steps")
+	if err != nil || !found {
+		fmt.Println("Error retrieving task details.")
+		return
+	}
+
+	fmt.Println("Steps:")
+	for i, step := range steps {
+		stepMap, ok := step.(map[string]interface{})
+		if !ok {
+			fmt.Printf("Error processing step %d\n", i)
+			continue
+		}
+
+		name, found, _ := unstructured.NestedString(stepMap, "name")
+		if !found {
+			name = fmt.Sprintf("Step%d", i+1)
+		}
+
+		image, found, _ := unstructured.NestedString(stepMap, "image")
+		if !found {
+			image = "N/A"
+		}
+
+		command, found, _ := unstructured.NestedStringSlice(stepMap, "command")
+		if !found {
+			command = []string{"N/A"}
+		}
+
+		fmt.Printf("  Step %d:\n", i+1)
+		fmt.Printf("    Name: %s\n", name)
+		fmt.Printf("    Image: %s\n", image)
+		fmt.Printf("    Command: %v\n", command)
+	}
+}
