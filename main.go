@@ -55,11 +55,6 @@ func main() {
 	}
 
 
-	// Register the Tekton scheme
-	//v1beta1.AddToScheme(scheme.Scheme)
-	//metav1.AddToGroupVersion(scheme.Scheme, schema.GroupVersion{Group: "tekton.dev", Version: "v1beta1"})
-
-
 	// Create Task
 	taskResource := schema.GroupVersionResource{Group: "tekton.dev", Version: "v1beta1", Resource: "tasks"}
 
@@ -92,6 +87,24 @@ func main() {
 	printTaskDetails(resultTask)
 
 
+	//Update Task
+	prompt()
+	existingTask, err := dynamicClient.Resource(taskResource).Namespace("default").Get(context.TODO(), task.GetName(), metav1.GetOptions{})
+	if err != nil {
+			panic(err)
+	}
+
+	fmt.Println("Before update task details are :-")
+	printTaskDetails(existingTask)
+
+	fmt.Println("\nUpdating Task Details...")
+	fmt.Println()
+	updateTaskDetails(existingTask)
+
+	fmt.Println("\nTask Updated.")
+	printTaskDetails(existingTask)
+
+
 	// List Tasks
 	prompt()
 	fmt.Printf("Listing Tasks in namespace %q:\n", "default")
@@ -103,6 +116,7 @@ func main() {
 		fmt.Printf(" * %s\n", t.GetName())
 	}
 
+
 	// Delete Task
 	prompt()
 	fmt.Println("Deleting Task...")
@@ -113,8 +127,22 @@ func main() {
 		panic(err)
 	}
 	fmt.Println("Deleted Task.")
+
+
+	// List Tasks
+	prompt()
+	fmt.Printf("Listing Tasks in namespace %q:\n", "default")
+	taskList, err = dynamicClient.Resource(taskResource).Namespace("default").List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		panic(err)
+	}
+	for _, t := range taskList.Items {
+		fmt.Printf(" * %s\n", t.GetName())
+	}
+	
 }
 
+	
 func prompt() {
 	fmt.Printf("-> Press Return key to continue.")
 	scanner := bufio.NewScanner(os.Stdin)
@@ -127,11 +155,7 @@ func prompt() {
 	fmt.Println()
 }
 
-//func printTaskDetails(task *unstructured.Unstructured) {
-	//image, _, _ := unstructured.NestedString(task.Object, "spec", "steps", "image")
-	//command, _, _ := unstructured.NestedStringSlice(task.Object, "spec", "steps", "command")
-	//fmt.Printf("Image: %s, Command: %v\n", image, command)
-//}
+
 
 func printTaskDetails(task *unstructured.Unstructured) {
 	steps, found, err := unstructured.NestedSlice(task.Object, "spec", "steps")
@@ -140,17 +164,11 @@ func printTaskDetails(task *unstructured.Unstructured) {
 		return
 	}
 
-	fmt.Println("Steps:")
 	for i, step := range steps {
 		stepMap, ok := step.(map[string]interface{})
 		if !ok {
 			fmt.Printf("Error processing step %d\n", i)
 			continue
-		}
-
-		name, found, _ := unstructured.NestedString(stepMap, "name")
-		if !found {
-			name = fmt.Sprintf("Step%d", i+1)
 		}
 
 		image, found, _ := unstructured.NestedString(stepMap, "image")
@@ -163,9 +181,42 @@ func printTaskDetails(task *unstructured.Unstructured) {
 			command = []string{"N/A"}
 		}
 
-		fmt.Printf("  Step %d:\n", i+1)
-		fmt.Printf("    Name: %s\n", name)
 		fmt.Printf("    Image: %s\n", image)
 		fmt.Printf("    Command: %v\n", command)
 	}
 }
+
+
+func updateTaskDetails(task *unstructured.Unstructured) {
+
+	steps, found, err := unstructured.NestedSlice(task.Object, "spec", "steps")
+	if err != nil || !found {
+		fmt.Println("Error retrieving task details.")
+		return
+	}
+
+	for i := range steps {
+
+		found := unstructured.SetNestedField(steps[i].(map[string]interface{}), "nginx", "image")
+		if found != nil {
+			fmt.Println("Error updating image")
+			panic(found)
+		}
+
+		err := unstructured.SetNestedStringSlice(steps[i].(map[string]interface{}), []string{"echo", "Updated Hello, Tekton!"}, "command")
+		if err != nil {
+			panic(err)
+
+		}
+		
+	}
+	err = unstructured.SetNestedSlice(task.Object, steps, "spec", "steps")
+	if err != nil{
+		fmt.Println(err)
+	}
+	
+}
+
+
+
+
